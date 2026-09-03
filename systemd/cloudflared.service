@@ -1,0 +1,12 @@
+[Unit]
+Description=Cloudflare Tunnel for Pal Server web GUI
+After=network.target pal-web-gui.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/cloudflared tunnel run palserver-gui
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

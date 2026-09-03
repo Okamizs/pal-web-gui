@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+config.json
+cert.pem
+key.pem
+backups/
+player_events.json
+duckdns.log

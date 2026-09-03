@@ -1,0 +1,6 @@
+[Unit]
+Description=Scheduled Palworld world backup
+
+[Service]
+Type=oneshot
+ExecStart=/home/deck/pal-web-gui/scheduled_backup.sh

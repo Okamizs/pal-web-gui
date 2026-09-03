@@ -1,0 +1,13 @@
+[Unit]
+Description=Pal Server web admin GUI
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/pal-web-gui
+ExecStart=%h/pal-web-gui/.venv/bin/python %h/pal-web-gui/app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

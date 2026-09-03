@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="15">
+<title>Pal Server Admin — Monitor</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🥟 Pal Server Admin</h1>
+    <a class="logout" href="{{ url_for('logout') }}">Log out</a>
+  </header>
+  {% include 'nav.html' %}
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="card">
+    <h2>Status</h2>
+    <span class="pill {{ 'active' if status.active == 'active' else 'inactive' }}">{{ status.active }}</span>
+    <div class="stat-grid" style="margin-top:14px;">
+      <div class="stat"><div class="label">CPU</div><div class="value">{{ stats.cpu_pct if stats else '—' }}%</div></div>
+      <div class="stat"><div class="label">Memory</div><div class="value">{{ stats.mem_pct if stats else '—' }}%</div></div>
+      <div class="stat"><div class="label">Uptime</div><div class="value">{{ stats.elapsed if stats else '—' }}</div></div>
+      <div class="stat"><div class="label">Disk free</div><div class="value">{{ disk_free_gb }} GB</div></div>
+    </div>
+
+    <div class="row" style="margin-top:16px;">
+      <form method="post" action="{{ url_for('server_start') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" {% if status.active == 'active' %}disabled{% endif %}>Start</button>
+      </form>
+      <form method="post" action="{{ url_for('server_stop') }}" onsubmit="return confirm('Stop the server? Players online will be kicked.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="danger" {% if status.active != 'active' %}disabled{% endif %}>Stop</button>
+      </form>
+    </div>
+
+    <form method="post" action="{{ url_for('server_restart') }}" onsubmit="return confirm('Restart the server now?');" style="margin-top:14px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="row">
+        <input type="number" name="seconds" value="30" min="0" title="Warning seconds before restart">
+        <input type="text" name="message" placeholder="Restart message" value="Restarting">
+      </div>
+      <button type="submit" class="primary" {% if status.active != 'active' %}disabled{% endif %}>Restart now</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Scheduled restart</h2>
+    <form method="post" action="{{ url_for('scheduled_restart') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="checkbox">
+        <input type="checkbox" name="enabled" {% if scheduled_restart.enabled %}checked{% endif %}>
+        Enabled — {{ restart_timer.active }}{% if restart_timer.next_run %}, next: {{ restart_timer.next_run }}{% endif %}
+      </label>
+      <div class="row">
+        <div>
+          <label class="field">Daily at</label>
+          <input type="time" name="time" value="{{ scheduled_restart.time }}">
+        </div>
+        <div>
+          <label class="field">Warning seconds</label>
+          <input type="number" name="seconds_warning" min="0" value="{{ scheduled_restart.seconds_warning }}">
+        </div>
+      </div>
+      <label class="field">Message</label>
+      <input type="text" name="message" value="{{ scheduled_restart.message }}">
+      <button type="submit">Save schedule</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Recent player activity</h2>
+    {% if events %}
+    <table>
+      <tr><th>Time</th><th>Player</th><th>Event</th></tr>
+      {% for e in events %}
+      <tr>
+        <td class="small">{{ e.time }}</td>
+        <td>{{ e.name }}</td>
+        <td class="event-{{ e.event }}">{{ e.event }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="empty">No activity recorded yet (tracking started when the web GUI last restarted).</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Server log (last 150 lines)</h2>
+    <pre class="log">{{ log_text }}</pre>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,6 @@
+[Unit]
+Description=Scheduled Palworld server restart
+
+[Service]
+Type=oneshot
+ExecStart=/home/deck/pal-web-gui/scheduled_restart.sh

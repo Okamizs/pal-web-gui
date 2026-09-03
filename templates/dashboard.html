@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pal Server Admin</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🥟 Pal Server Admin</h1>
+    <a class="logout" href="{{ url_for('logout') }}">Log out</a>
+  </header>
+  {% include 'nav.html' %}
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  {% if server_info %}<div class="info">{{ server_info }}</div>{% endif %}
+
+  <div class="card">
+    <h2>Players ({{ players|length }})</h2>
+    {% if players %}
+    <table>
+      <tr><th>Name</th><th>Steam ID</th><th></th></tr>
+      {% for p in players %}
+      <tr class="player-row">
+        <td>{{ p.name }}</td>
+        <td class="small">{{ p.steamid }}</td>
+        <td>
+          <form class="inline" method="post" action="{{ url_for('action_kick') }}" onsubmit="return confirm('Kick {{ p.name }}?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="steamid" value="{{ p.steamid }}">
+            <button type="submit">Kick</button>
+          </form>
+          <form class="inline" method="post" action="{{ url_for('action_ban') }}" onsubmit="return confirm('Ban {{ p.name }}? This is not easily reversible.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="steamid" value="{{ p.steamid }}">
+            <button type="submit" class="danger">Ban</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="empty">No players online.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Broadcast</h2>
+    <form method="post" action="{{ url_for('action_broadcast') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="text" name="message" placeholder="Message to all players" required>
+      <button type="submit" class="primary">Send</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Save &amp; Shutdown</h2>
+    <form method="post" action="{{ url_for('action_save') }}" style="margin-bottom:14px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit">Save world now</button>
+    </form>
+    <form method="post" action="{{ url_for('action_shutdown') }}" onsubmit="return confirm('Shut down the server?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="row">
+        <input type="number" name="seconds" value="60" min="0" title="Seconds until shutdown">
+        <input type="text" name="message" placeholder="Shutdown message" value="Server restarting">
+      </div>
+      <button type="submit" class="danger">Schedule shutdown</button>
+    </form>
+    <div class="small">Tip: with the server now running as a systemd service, use <a href="{{ url_for('monitor') }}" style="color:#8b93a3;">Monitor → Restart</a> instead — it comes back up automatically.</div>
+  </div>
+
+  <div class="card">
+    <h2>Raw RCON command</h2>
+    <form method="post" action="{{ url_for('action_command') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="text" name="command" placeholder="e.g. Info" required>
+      <button type="submit">Run</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>

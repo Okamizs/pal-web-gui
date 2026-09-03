@@ -1,0 +1,6 @@
+<nav>
+  <a href="{{ url_for('dashboard') }}" class="{{ 'active' if active == 'dashboard' else '' }}">Dashboard</a>
+  <a href="{{ url_for('settings') }}" class="{{ 'active' if active == 'settings' else '' }}">Settings</a>
+  <a href="{{ url_for('backups') }}" class="{{ 'active' if active == 'backups' else '' }}">Backups</a>
+  <a href="{{ url_for('monitor') }}" class="{{ 'active' if active == 'monitor' else '' }}">Monitor</a>
+</nav>

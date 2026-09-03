@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pal Server Admin — Backups</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🥟 Pal Server Admin</h1>
+    <a class="logout" href="{{ url_for('logout') }}">Log out</a>
+  </header>
+  {% include 'nav.html' %}
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="card">
+    <h2>Create backup</h2>
+    <form method="post" action="{{ url_for('backups_create') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="primary">Save world &amp; back up now</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Scheduled backups</h2>
+    <form method="post" action="{{ url_for('backups_schedule') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="checkbox">
+        <input type="checkbox" name="enabled" {% if scheduled_backup.enabled %}checked{% endif %}>
+        Enabled — {{ backup_timer.active }}{% if backup_timer.next_run %}, next: {{ backup_timer.next_run }}{% endif %}
+      </label>
+      <div class="row">
+        <div>
+          <label class="field">Every N hours</label>
+          <input type="number" name="interval_hours" min="1" value="{{ scheduled_backup.interval_hours }}">
+        </div>
+        <div>
+          <label class="field">Keep last N backups</label>
+          <input type="number" name="keep" min="1" value="{{ scheduled_backup.keep }}">
+        </div>
+      </div>
+      <button type="submit">Save schedule</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Existing backups ({{ backups|length }})</h2>
+    {% if backups %}
+    <table>
+      <tr><th>Name</th><th>Size</th><th>Created</th><th></th></tr>
+      {% for b in backups %}
+      <tr>
+        <td class="small">{{ b.name }}</td>
+        <td>{{ b.size_mb }} MB</td>
+        <td>{{ b.mtime }}</td>
+        <td>
+          <form class="inline" method="post" action="{{ url_for('backups_restore') }}" onsubmit="return confirm('Restore {{ b.name }}? This overwrites the current world save. The server must already be stopped.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="name" value="{{ b.name }}">
+            <button type="submit" class="danger">Restore</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="empty">No backups yet.</div>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>
