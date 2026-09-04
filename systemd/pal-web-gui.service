@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=%h/pal-web-gui
-ExecStart=%h/pal-web-gui/.venv/bin/python %h/pal-web-gui/app.py
+ExecStart=%h/pal-web-gui/.venv/bin/gunicorn --certfile=%h/pal-web-gui/cert.pem --keyfile=%h/pal-web-gui/key.pem --bind 0.0.0.0:8443 --workers 1 --threads 4 --timeout 30 --graceful-timeout 10 app:app
 Restart=on-failure
 RestartSec=5
 
