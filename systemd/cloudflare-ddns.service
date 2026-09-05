@@ -1,0 +1,6 @@
+[Unit]
+Description=Update play.bachelorpals.com DNS record via Cloudflare API
+
+[Service]
+Type=oneshot
+ExecStart=%h/pal-web-gui/cloudflare_ddns_update.sh

@@ -173,7 +173,7 @@ def public_landing():
         players=players,
         online=online,
         discord_invite_url=cfg.get('discord_invite_url', ''),
-        connect_host='bachelorpals.duckdns.org',
+        connect_host='play.bachelorpals.com',
         connect_port=8211,
     )
 
