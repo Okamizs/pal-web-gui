@@ -1,0 +1,13 @@
+[Unit]
+Description=Pal Server watchdog (RCON health, crash detection, disk alerts)
+After=network.target palserver.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/pal-web-gui
+ExecStart=%h/pal-web-gui/.venv/bin/python %h/pal-web-gui/watchdog.py
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=default.target

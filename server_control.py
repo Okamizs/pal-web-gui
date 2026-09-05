@@ -57,6 +57,12 @@ def service_status():
     return {'active': active, 'enabled': enabled, 'pid': pid}
 
 
+def restart_count():
+    """How many times systemd has auto-restarted the game server (crash detection)."""
+    props = _show_properties(UNIT_NAME, 'NRestarts')
+    return int(props.get('NRestarts', 0))
+
+
 def worker_pid():
     """PID of the actual game binary, not the launcher shell script systemd tracks as
     MainPID (PalServer.sh runs it as a child instead of exec'ing into it)."""

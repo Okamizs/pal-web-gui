@@ -20,6 +20,17 @@
     {% endfor %}
   {% endwith %}
 
+  <div class="card">
+    <h2>Notifications</h2>
+    <form method="post" action="{{ url_for('settings_notifications') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="field">Discord webhook URL</label>
+      <input type="text" name="discord_webhook_url" value="{{ discord_webhook_url }}" placeholder="https://discord.com/api/webhooks/...">
+      <button type="submit">Save</button>
+    </form>
+    <div class="small" style="margin-top:8px;">Used for player join/leave, server crash/restart, backup failures, disk space, and login-lockout alerts.</div>
+  </div>
+
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 

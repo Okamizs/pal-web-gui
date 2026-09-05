@@ -7,3 +7,4 @@ key.pem
 backups/
 player_events.json
 duckdns.log
+failed_logins.json

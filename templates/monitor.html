@@ -95,6 +95,29 @@
   </div>
 
   <div class="card">
+    <h2>Security</h2>
+    {% if active_lockouts %}
+    <div class="flash error" style="margin-bottom:14px;">
+      {% for l in active_lockouts %}Locked out: <code>{{ l.ip }}</code> until {{ l.until }}<br>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="small" style="margin-bottom:8px;">Recent failed login attempts</div>
+    {% if failed_logins %}
+    <table>
+      <tr><th>Time</th><th>IP</th></tr>
+      {% for f in failed_logins %}
+      <tr>
+        <td class="small">{{ f.time }}</td>
+        <td>{{ f.ip }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="empty">No failed login attempts recorded.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
     <h2>Server log (last 150 lines)</h2>
     <pre class="log">{{ log_text }}</pre>
   </div>

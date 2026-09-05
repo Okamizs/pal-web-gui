@@ -9,12 +9,14 @@ from flask import Flask, redirect, render_template, request, session, url_for, f
 from werkzeug.security import check_password_hash
 
 import ini_settings
+import notify
 import rcon_client
 import server_control
 
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / 'config.json'
 PLAYER_EVENTS_PATH = BASE_DIR / 'player_events.json'
+FAILED_LOGIN_LOG_PATH = BASE_DIR / 'failed_logins.json'
 
 
 def load_config():
@@ -66,6 +68,24 @@ def check_csrf():
     return token and request.form.get('csrf_token') == token
 
 
+# --- failed login tracking (intrusion awareness) ---
+
+_failed_login_lock = threading.Lock()
+
+
+def _load_failed_logins():
+    if FAILED_LOGIN_LOG_PATH.exists():
+        return json.loads(FAILED_LOGIN_LOG_PATH.read_text())
+    return []
+
+
+def _log_failed_login(ip):
+    with _failed_login_lock:
+        log = _load_failed_logins()
+        log.append({'time': time.strftime('%Y-%m-%d %H:%M:%S'), 'ip': ip})
+        FAILED_LOGIN_LOG_PATH.write_text(json.dumps(log[-200:], indent=2))
+
+
 # --- background player join/leave tracker ---
 
 _player_events_lock = threading.Lock()
@@ -101,6 +121,11 @@ def _poll_players_forever():
                         for name in left:
                             events.append({'time': now, 'name': name, 'event': 'left'})
                         _save_events(events)
+                    webhook = cfg.get('discord_webhook_url')
+                    for name in joined:
+                        notify.send_discord(webhook, f'\N{LARGE GREEN CIRCLE} **{name}** joined the server.')
+                    for name in left:
+                        notify.send_discord(webhook, f'\N{LARGE RED CIRCLE} **{name}** left the server.')
             known = current
             first_poll = False
         except Exception:
@@ -150,8 +175,16 @@ def login():
             return redirect(next_url)
         else:
             count += 1
+            newly_locked = count == MAX_ATTEMPTS
             locked_until = time.time() + LOCKOUT_SECONDS if count >= MAX_ATTEMPTS else 0
             FAILED_LOGINS[ip] = (count, locked_until)
+            _log_failed_login(ip)
+            if newly_locked:
+                notify.send_discord(
+                    cfg.get('discord_webhook_url'),
+                    f'\N{LOCK} Login lockout triggered for `{ip}` after {MAX_ATTEMPTS} failed attempts '
+                    f'on the Pal Server admin panel.',
+                )
             flash('Incorrect password.', 'error')
 
     return render_template('login.html')
@@ -303,7 +336,26 @@ def settings():
         return redirect(url_for('settings'))
 
     fields = ini_settings.to_display(pairs)
-    return render_template('settings.html', fields=fields, csrf_token=get_csrf_token(), active='settings')
+    return render_template(
+        'settings.html',
+        fields=fields,
+        discord_webhook_url=load_config().get('discord_webhook_url', ''),
+        csrf_token=get_csrf_token(),
+        active='settings',
+    )
+
+
+@app.route('/settings/notifications', methods=['POST'])
+@login_required
+def settings_notifications():
+    if not check_csrf():
+        flash('Session expired, please retry.', 'error')
+        return redirect(url_for('settings'))
+    cfg = load_config()
+    cfg['discord_webhook_url'] = request.form.get('discord_webhook_url', '').strip()
+    save_config(cfg)
+    flash('Notification settings saved.', 'result')
+    return redirect(url_for('settings'))
 
 
 # --- backups ---
@@ -385,6 +437,12 @@ def monitor():
     stats = server_control.process_stats(server_control.worker_pid()) if status['active'] == 'active' else None
     log_text = server_control.recent_log(150)
     events = list(reversed(_load_events()))[:40]
+    failed_logins = list(reversed(_load_failed_logins()))[:20]
+    active_lockouts = [
+        {'ip': ip, 'until': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(locked_until))}
+        for ip, (count, locked_until) in FAILED_LOGINS.items()
+        if locked_until > time.time()
+    ]
     return render_template(
         'monitor.html',
         status=status,
@@ -392,6 +450,8 @@ def monitor():
         disk_free_gb=server_control.disk_free_gb(),
         log_text=log_text,
         events=events,
+        failed_logins=failed_logins,
+        active_lockouts=active_lockouts,
         csrf_token=get_csrf_token(),
         scheduled_restart=cfg.get('scheduled_restart', {'enabled': False, 'time': '04:00', 'seconds_warning': 60, 'message': 'Scheduled restart'}),
         restart_timer=server_control.timer_status(server_control.RESTART_TIMER_NAME),
