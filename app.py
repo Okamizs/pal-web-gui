@@ -148,9 +148,39 @@ def parse_players(raw):
 threading.Thread(target=_poll_players_forever, daemon=True).start()
 
 
+# --- public landing page ---
+
+@app.route('/')
+def public_landing():
+    cfg = load_config()
+    pairs = ini_settings.parse(server_control.INI_PATH.read_text())
+    server_name = pairs.get('ServerName', '""').strip('"')
+    description = pairs.get('ServerDescription', '""').strip('"')
+    max_players = pairs.get('ServerPlayerMaxNum', '32')
+
+    try:
+        players = parse_players(rcon('ShowPlayers'))
+        online = True
+    except rcon_client.RconError:
+        players = []
+        online = False
+
+    return render_template(
+        'public.html',
+        server_name=server_name,
+        description=description,
+        max_players=max_players,
+        players=players,
+        online=online,
+        discord_invite_url=cfg.get('discord_invite_url', ''),
+        connect_host='bachelorpals.duckdns.org',
+        connect_port=8211,
+    )
+
+
 # --- auth ---
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/admin/login', methods=['GET', 'POST'])
 def login():
     if session.get('authenticated'):
         return redirect(url_for('dashboard'))
@@ -190,7 +220,7 @@ def login():
     return render_template('login.html')
 
 
-@app.route('/logout')
+@app.route('/admin/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
@@ -198,7 +228,7 @@ def logout():
 
 # --- dashboard ---
 
-@app.route('/')
+@app.route('/admin')
 @login_required
 def dashboard():
     error = None
@@ -223,7 +253,7 @@ def dashboard():
     )
 
 
-@app.route('/action/command', methods=['POST'])
+@app.route('/admin/action/command', methods=['POST'])
 @login_required
 def action_command():
     if not check_csrf():
@@ -239,7 +269,7 @@ def action_command():
     return redirect(url_for('dashboard'))
 
 
-@app.route('/action/broadcast', methods=['POST'])
+@app.route('/admin/action/broadcast', methods=['POST'])
 @login_required
 def action_broadcast():
     if not check_csrf():
@@ -255,7 +285,7 @@ def action_broadcast():
     return redirect(url_for('dashboard'))
 
 
-@app.route('/action/save', methods=['POST'])
+@app.route('/admin/action/save', methods=['POST'])
 @login_required
 def action_save():
     if not check_csrf():
@@ -269,7 +299,7 @@ def action_save():
     return redirect(url_for('dashboard'))
 
 
-@app.route('/action/kick', methods=['POST'])
+@app.route('/admin/action/kick', methods=['POST'])
 @login_required
 def action_kick():
     if not check_csrf():
@@ -285,7 +315,7 @@ def action_kick():
     return redirect(url_for('dashboard'))
 
 
-@app.route('/action/ban', methods=['POST'])
+@app.route('/admin/action/ban', methods=['POST'])
 @login_required
 def action_ban():
     if not check_csrf():
@@ -301,7 +331,7 @@ def action_ban():
     return redirect(url_for('dashboard'))
 
 
-@app.route('/action/shutdown', methods=['POST'])
+@app.route('/admin/action/shutdown', methods=['POST'])
 @login_required
 def action_shutdown():
     if not check_csrf():
@@ -319,7 +349,7 @@ def action_shutdown():
 
 # --- settings editor ---
 
-@app.route('/settings', methods=['GET', 'POST'])
+@app.route('/admin/settings', methods=['GET', 'POST'])
 @login_required
 def settings():
     ini_path = server_control.INI_PATH
@@ -336,16 +366,18 @@ def settings():
         return redirect(url_for('settings'))
 
     fields = ini_settings.to_display(pairs)
+    cfg = load_config()
     return render_template(
         'settings.html',
         fields=fields,
-        discord_webhook_url=load_config().get('discord_webhook_url', ''),
+        discord_webhook_url=cfg.get('discord_webhook_url', ''),
+        discord_invite_url=cfg.get('discord_invite_url', ''),
         csrf_token=get_csrf_token(),
         active='settings',
     )
 
 
-@app.route('/settings/notifications', methods=['POST'])
+@app.route('/admin/settings/notifications', methods=['POST'])
 @login_required
 def settings_notifications():
     if not check_csrf():
@@ -358,9 +390,22 @@ def settings_notifications():
     return redirect(url_for('settings'))
 
 
+@app.route('/admin/settings/public', methods=['POST'])
+@login_required
+def settings_public():
+    if not check_csrf():
+        flash('Session expired, please retry.', 'error')
+        return redirect(url_for('settings'))
+    cfg = load_config()
+    cfg['discord_invite_url'] = request.form.get('discord_invite_url', '').strip()
+    save_config(cfg)
+    flash('Public page settings saved.', 'result')
+    return redirect(url_for('settings'))
+
+
 # --- backups ---
 
-@app.route('/backups', methods=['GET'])
+@app.route('/admin/backups', methods=['GET'])
 @login_required
 def backups():
     cfg = load_config()
@@ -374,7 +419,7 @@ def backups():
     )
 
 
-@app.route('/backups/create', methods=['POST'])
+@app.route('/admin/backups/create', methods=['POST'])
 @login_required
 def backups_create():
     if not check_csrf():
@@ -392,7 +437,7 @@ def backups_create():
     return redirect(url_for('backups'))
 
 
-@app.route('/backups/restore', methods=['POST'])
+@app.route('/admin/backups/restore', methods=['POST'])
 @login_required
 def backups_restore():
     if not check_csrf():
@@ -407,7 +452,7 @@ def backups_restore():
     return redirect(url_for('backups'))
 
 
-@app.route('/backups/schedule', methods=['POST'])
+@app.route('/admin/backups/schedule', methods=['POST'])
 @login_required
 def backups_schedule():
     if not check_csrf():
@@ -429,7 +474,7 @@ def backups_schedule():
 
 # --- monitor ---
 
-@app.route('/monitor')
+@app.route('/admin/monitor')
 @login_required
 def monitor():
     cfg = load_config()
@@ -459,7 +504,7 @@ def monitor():
     )
 
 
-@app.route('/server/start', methods=['POST'])
+@app.route('/admin/server/start', methods=['POST'])
 @login_required
 def server_start():
     if not check_csrf():
@@ -469,7 +514,7 @@ def server_start():
     return redirect(url_for('monitor'))
 
 
-@app.route('/server/stop', methods=['POST'])
+@app.route('/admin/server/stop', methods=['POST'])
 @login_required
 def server_stop():
     if not check_csrf():
@@ -485,7 +530,7 @@ def server_stop():
     return redirect(url_for('monitor'))
 
 
-@app.route('/server/restart', methods=['POST'])
+@app.route('/admin/server/restart', methods=['POST'])
 @login_required
 def server_restart():
     if not check_csrf():
@@ -500,7 +545,7 @@ def server_restart():
     return redirect(url_for('monitor'))
 
 
-@app.route('/scheduled/restart', methods=['POST'])
+@app.route('/admin/scheduled/restart', methods=['POST'])
 @login_required
 def scheduled_restart():
     if not check_csrf():

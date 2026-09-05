@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="30">
+<title>{{ server_name }} — Palworld Server</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: #14171c; color: #e8eaed;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex; justify-content: center;
+  }
+  .wrap { max-width: 640px; width: 100%; padding: 48px 20px 60px; }
+  .hero { text-align: center; margin-bottom: 32px; }
+  .hero .emoji { font-size: 48px; margin-bottom: 8px; }
+  .hero h1 { font-size: 32px; margin: 0 0 8px; }
+  .hero p { color: #8b93a3; font-size: 16px; margin: 0; }
+  .pill-row { display: flex; justify-content: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .pill { padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+  .pill.online { background: #1e2e24; color: #8adf9c; }
+  .pill.offline { background: #402226; color: #ff8a8a; }
+  .pill.count { background: #1c2029; color: #e8eaed; border: 1px solid #2a2f3a; }
+  .card {
+    background: #1c2029; border: 1px solid #2a2f3a; border-radius: 14px;
+    padding: 24px; margin-bottom: 18px;
+  }
+  .card h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .04em; color: #8b93a3; margin: 0 0 16px; }
+  .join-step { display: flex; gap: 12px; margin-bottom: 16px; align-items: flex-start; }
+  .join-step:last-child { margin-bottom: 0; }
+  .join-step .num {
+    flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; background: #5b8cff;
+    color: #fff; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center;
+  }
+  .join-step .text { font-size: 15px; line-height: 1.5; padding-top: 2px; }
+  code {
+    background: #12151b; border: 1px solid #2a2f3a; border-radius: 6px;
+    padding: 2px 8px; font-size: 14px; color: #8adf9c;
+  }
+  .players { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .players li { background: #12151b; border-radius: 8px; padding: 6px 12px; font-size: 14px; }
+  .empty { color: #5a6170; font-size: 14px; }
+  .highlights { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+  .highlight { background: #12151b; border-radius: 10px; padding: 14px; font-size: 13px; text-align: center; color: #b7bfcc; }
+  .discord-btn {
+    display: block; text-align: center; background: #5865F2; color: #fff; text-decoration: none;
+    padding: 13px; border-radius: 10px; font-weight: 700; font-size: 15px;
+  }
+  .discord-btn:hover { background: #4a55d6; }
+  .footer { text-align: center; color: #4a505c; font-size: 12px; margin-top: 24px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div class="emoji">🥟</div>
+    <h1>{{ server_name }}</h1>
+    {% if description %}<p>{{ description }}</p>{% endif %}
+    <div class="pill-row">
+      <span class="pill {{ 'online' if online else 'offline' }}">{{ 'Online' if online else 'Offline' }}</span>
+      {% if online %}<span class="pill count">{{ players|length }} / {{ max_players }} players</span>{% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Players online</h2>
+    {% if players %}
+    <ul class="players">
+      {% for p in players %}<li>{{ p.name }}</li>{% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">{{ 'No one online right now — come change that!' if online else 'Server is currently offline.' }}</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>How to join</h2>
+    <div class="join-step">
+      <div class="num">1</div>
+      <div class="text">Open Palworld and go to <strong>Join Multiplayer Game → Community Servers</strong>, then search for <strong>{{ server_name }}</strong>.</div>
+    </div>
+    <div class="join-step">
+      <div class="num">2</div>
+      <div class="text">Or connect directly (Steam): <code>{{ connect_host }}:{{ connect_port }}</code></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Good to know</h2>
+    <div class="highlights">
+      <div class="highlight">🛡️ PvP damage off — no killing other players' Pals or wrecking bases</div>
+      <div class="highlight">🎮 Crossplay: Steam, Xbox, PS5, Mac</div>
+      <div class="highlight">🔓 No password required</div>
+    </div>
+  </div>
+
+  {% if discord_invite_url %}
+  <a class="discord-btn" href="{{ discord_invite_url }}">Join the Discord</a>
+  {% endif %}
+
+  <div class="footer">Page refreshes automatically</div>
+</div>
+</body>
+</html>

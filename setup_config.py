@@ -24,6 +24,7 @@ config = {
     'web_password_hash': generate_password_hash(web_password),
     'secret_key': secrets.token_hex(32),
     'discord_webhook_url': '',
+    'discord_invite_url': '',
 }
 
 CONFIG_PATH.write_text(json.dumps(config, indent=2))

@@ -31,6 +31,17 @@
     <div class="small" style="margin-top:8px;">Used for player join/leave, server crash/restart, backup failures, disk space, and login-lockout alerts.</div>
   </div>
 
+  <div class="card">
+    <h2>Public page</h2>
+    <form method="post" action="{{ url_for('settings_public') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="field">Discord invite URL (optional)</label>
+      <input type="text" name="discord_invite_url" value="{{ discord_invite_url }}" placeholder="https://discord.gg/...">
+      <button type="submit">Save</button>
+    </form>
+    <div class="small" style="margin-top:8px;">Shown on the public landing page at <a href="/" style="color:#8b93a3;">bachelorpals.com</a>. Leave blank to hide the Discord button.</div>
+  </div>
+
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
