@@ -38,6 +38,15 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = True
 app.permanent_session_lifetime = 60 * 60 * 12  # 12 hours
 
+@app.context_processor
+def inject_static_url():
+    def static_url(filename):
+        path = Path(app.static_folder) / filename
+        v = int(path.stat().st_mtime) if path.exists() else 0
+        return f'{url_for("static", filename=filename)}?v={v}'
+    return dict(static_url=static_url)
+
+
 FAILED_LOGINS = {}
 MAX_ATTEMPTS = 5
 LOCKOUT_SECONDS = 300

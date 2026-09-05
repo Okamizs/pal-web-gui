@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="30">
 <title>{{ server_name }} — Palworld Server</title>
-<link rel="icon" href="{{ url_for('static', filename='favicon.png') }}">
+<link rel="icon" href="{{ static_url('favicon.png') }}">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -56,7 +56,7 @@
 <body>
 <div class="wrap">
   <div class="hero">
-    <img class="logo" src="{{ url_for('static', filename='logo.png') }}" alt="">
+    <img class="logo" src="{{ static_url('logo.png') }}" alt="">
     <h1>{{ server_name }}</h1>
     {% if description %}<p>{{ description }}</p>{% endif %}
     <div class="pill-row">

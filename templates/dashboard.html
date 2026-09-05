@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pal Server Admin</title>
-<link rel="icon" href="{{ url_for('static', filename='favicon.png') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="icon" href="{{ static_url('favicon.png') }}">
+<link rel="stylesheet" href="{{ static_url('style.css') }}">
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1><img src="{{ url_for('static', filename='logo.png') }}" alt=""> Pal Server Admin</h1>
+    <h1><img src="{{ static_url('logo.png') }}" alt=""> Pal Server Admin</h1>
     <a class="logout" href="{{ url_for('logout') }}">Log out</a>
   </header>
   {% include 'nav.html' %}
