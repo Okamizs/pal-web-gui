@@ -47,6 +47,13 @@ def inject_static_url():
     return dict(static_url=static_url)
 
 
+@app.after_request
+def no_cache_admin(response):
+    if request.path.startswith('/admin'):
+        response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 FAILED_LOGINS = {}
 MAX_ATTEMPTS = 5
 LOCKOUT_SECONDS = 300
