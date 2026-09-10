@@ -1,6 +1,7 @@
 import datetime
 import glob
 import os
+import re
 import subprocess
 import tarfile
 import time
@@ -14,6 +15,8 @@ UNIT_NAME = 'palserver.service'
 RESTART_TIMER_NAME = 'palserver-restart.timer'
 BACKUP_TIMER_NAME = 'palserver-backup.timer'
 WORKER_BINARY_MATCH = 'Pal/Binaries/Linux/PalServer-Linux-Shipping'
+INTENTIONAL_RESTART_MARKER = Path.home() / 'pal-web-gui/.intentional_restart'
+INTENTIONAL_RESTART_MAX_AGE_SECONDS = 600
 
 
 def _show_properties(unit, *props):
@@ -77,11 +80,29 @@ def start_server():
 
 
 def stop_server():
-    return systemctl('stop', UNIT_NAME)
+    # --no-block: a hung server can take up to TimeoutStopSec (90s) to die,
+    # longer than gunicorn's worker timeout.
+    return systemctl('stop', '--no-block', UNIT_NAME)
 
 
 def restart_server():
     return systemctl('restart', UNIT_NAME)
+
+
+def mark_intentional_restart():
+    """Call right after a successful RCON `Shutdown` so the watchdog doesn't
+    report the resulting Restart=always relaunch as a crash."""
+    INTENTIONAL_RESTART_MARKER.touch()
+
+
+def consume_intentional_restart():
+    """True if an intentional shutdown was flagged recently; clears the flag."""
+    try:
+        age = time.time() - INTENTIONAL_RESTART_MARKER.stat().st_mtime
+    except FileNotFoundError:
+        return False
+    INTENTIONAL_RESTART_MARKER.unlink(missing_ok=True)
+    return age < INTENTIONAL_RESTART_MAX_AGE_SECONDS
 
 
 def recent_log(lines=100):
@@ -151,8 +172,8 @@ def prune_backups(keep):
 
 def restore_backup(name):
     status = service_status()
-    if status['active'] == 'active':
-        raise RuntimeError('Stop the server before restoring a backup')
+    if status['active'] not in ('inactive', 'failed'):
+        raise RuntimeError(f"Server must be fully stopped before restoring a backup (state: {status['active']})")
     archive = BACKUPS_DIR / name
     if not archive.exists() or archive.parent != BACKUPS_DIR:
         raise RuntimeError('Backup not found')
@@ -164,8 +185,11 @@ def restore_backup(name):
 # --- scheduled restart timer (writes a systemd OnCalendar timer) ---
 
 def write_restart_timer(enabled, time_str):
-    """time_str is 'HH:MM'."""
-    hh, mm = time_str.split(':')
+    """time_str is 'HH:MM' (a trailing ':SS' from some browsers is ignored)."""
+    m = re.fullmatch(r'([01]\d|2[0-3]):([0-5]\d)(?::\d{2})?', time_str)
+    if not m:
+        raise ValueError(f'Restart time must be HH:MM, got {time_str!r}')
+    hh, mm = m.group(1), m.group(2)
     unit_path = SYSTEMD_USER_DIR / RESTART_TIMER_NAME
     service_path = SYSTEMD_USER_DIR / 'palserver-restart.service'
     service_path.write_text(

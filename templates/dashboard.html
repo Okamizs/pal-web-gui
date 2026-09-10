@@ -33,12 +33,12 @@
         <td>{{ p.name }}</td>
         <td class="small">{{ p.steamid }}</td>
         <td>
-          <form class="inline" method="post" action="{{ url_for('action_kick') }}" onsubmit="return confirm('Kick {{ p.name }}?');">
+          <form class="inline" method="post" action="{{ url_for('action_kick') }}" data-name="{{ p.name }}" onsubmit="return confirm('Kick ' + this.dataset.name + '?');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="steamid" value="{{ p.steamid }}">
             <button type="submit">Kick</button>
           </form>
-          <form class="inline" method="post" action="{{ url_for('action_ban') }}" onsubmit="return confirm('Ban {{ p.name }}? This is not easily reversible.');">
+          <form class="inline" method="post" action="{{ url_for('action_ban') }}" data-name="{{ p.name }}" onsubmit="return confirm('Ban ' + this.dataset.name + '? This is not easily reversible.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="steamid" value="{{ p.steamid }}">
             <button type="submit" class="danger">Ban</button>

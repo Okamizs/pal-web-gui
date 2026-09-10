@@ -51,7 +51,13 @@ def _split_top_level(s):
     i = 0
     while i < len(s):
         ch = s[i]
-        if ch == '"' and (i == 0 or s[i - 1] != '\\'):
+        if in_quotes and ch == '\\' and i + 1 < len(s):
+            # escaped char inside a string (\" or \\): keep both, never toggle on it
+            current.append(ch)
+            current.append(s[i + 1])
+            i += 2
+            continue
+        if ch == '"':
             in_quotes = not in_quotes
             current.append(ch)
         elif not in_quotes and ch == '(':
@@ -91,6 +97,17 @@ def render(pairs):
     return f'{HEADER}\nOptionSettings=({body})\n\n'
 
 
+def unquote(raw):
+    """Raw ini string value ("...", with \\" and \\\\ escapes) -> plain text."""
+    if raw.startswith('"') and raw.endswith('"'):
+        return re.sub(r'\\(["\\])', r'\1', raw[1:-1])
+    return raw
+
+
+def quote(value):
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+
 def to_display(pairs):
     """Curated fields only, typed for form rendering. Missing keys are skipped."""
     fields = []
@@ -99,7 +116,7 @@ def to_display(pairs):
             continue
         raw = pairs[key]
         if kind == 'string':
-            value = raw[1:-1] if raw.startswith('"') and raw.endswith('"') else raw
+            value = unquote(raw)
         elif kind == 'bool':
             value = raw.strip() == 'True'
         else:
@@ -116,17 +133,21 @@ def apply_updates(pairs, form):
         if kind == 'bool':
             pairs[key] = 'True' if form.get(key) == 'on' else 'False'
         elif kind == 'string':
-            raw = form.get(key, '')
-            escaped = raw.replace('"', '\\"')
-            pairs[key] = f'"{escaped}"'
+            pairs[key] = quote(form.get(key, ''))
         elif kind == 'int':
             raw = form.get(key, '').strip()
             if raw:
-                pairs[key] = str(int(raw))
+                try:
+                    pairs[key] = str(int(raw))
+                except ValueError:
+                    pass
         elif kind == 'float':
             raw = form.get(key, '').strip()
             if raw:
-                pairs[key] = f'{float(raw):.6f}'
+                try:
+                    pairs[key] = f'{float(raw):.6f}'
+                except ValueError:
+                    pass
         elif kind == 'rawtext':
             raw = form.get(key, '').strip()
             if raw:

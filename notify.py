@@ -9,7 +9,9 @@ def send_discord(webhook_url, content):
     if not webhook_url:
         print('notify.send_discord: no webhook_url configured, skipping', file=sys.stderr)
         return
-    data = json.dumps({'content': content}).encode('utf-8')
+    # allowed_mentions: player names end up in these messages, so a player
+    # called "@everyone" must not be able to ping the whole Discord.
+    data = json.dumps({'content': content, 'allowed_mentions': {'parse': []}}).encode('utf-8')
     req = urllib.request.Request(
         webhook_url, data=data, method='POST', headers={
             'Content-Type': 'application/json',

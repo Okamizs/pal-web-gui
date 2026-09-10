@@ -6,7 +6,7 @@ cert.pem
 key.pem
 backups/
 player_events.json
-duckdns.log
 failed_logins.json
+.intentional_restart
 cloudflare_ddns.log
 CLAUDE.md

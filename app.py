@@ -1,5 +1,6 @@
 import json
 import secrets
+import sys
 import threading
 import time
 from functools import wraps
@@ -64,6 +65,23 @@ def rcon(command):
     return rcon_client.execute(cfg['rcon_host'], cfg['rcon_port'], cfg['rcon_password'], command)
 
 
+def client_ip():
+    # Behind the Cloudflare tunnel every request arrives from cloudflared on
+    # loopback, so only then is CF-Connecting-IP trustworthy: a LAN client could
+    # forge the header, but it arrives from its own LAN address and is ignored.
+    if request.remote_addr in ('127.0.0.1', '::1'):
+        return request.headers.get('CF-Connecting-IP') or request.remote_addr
+    return request.remote_addr
+
+
+def _form_int(field, default, minimum):
+    try:
+        value = int(request.form.get(field, '').strip() or default)
+    except ValueError:
+        value = default
+    return max(minimum, value)
+
+
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
@@ -117,35 +135,41 @@ def _save_events(events):
     PLAYER_EVENTS_PATH.write_text(json.dumps(events[-500:], indent=2))
 
 
+def _initial_known():
+    # Seed "who is online" from the event log so a web-GUI restart doesn't
+    # reset the baseline and silently swallow the next real join/leave.
+    last = {}
+    for e in _load_events():
+        last[e['name']] = e['event']
+    return {name for name, event in last.items() if event == 'joined'}
+
+
 def _poll_players_forever():
-    known = set()
-    first_poll = True
+    known = _initial_known()
     while True:
         try:
             cfg = load_config()
             raw = rcon_client.execute(cfg['rcon_host'], cfg['rcon_port'], cfg['rcon_password'], 'ShowPlayers')
             current = {p['name'] for p in parse_players(raw)}
-            if not first_poll:
-                joined = current - known
-                left = known - current
-                if joined or left:
-                    with _player_events_lock:
-                        events = _load_events()
-                        now = time.strftime('%Y-%m-%d %H:%M:%S')
-                        for name in joined:
-                            events.append({'time': now, 'name': name, 'event': 'joined'})
-                        for name in left:
-                            events.append({'time': now, 'name': name, 'event': 'left'})
-                        _save_events(events)
-                    webhook = cfg.get('discord_webhook_url')
+            joined = current - known
+            left = known - current
+            if joined or left:
+                with _player_events_lock:
+                    events = _load_events()
+                    now = time.strftime('%Y-%m-%d %H:%M:%S')
                     for name in joined:
-                        notify.send_discord(webhook, f'\N{LARGE GREEN CIRCLE} **{name}** joined the server.')
+                        events.append({'time': now, 'name': name, 'event': 'joined'})
                     for name in left:
-                        notify.send_discord(webhook, f'\N{LARGE RED CIRCLE} **{name}** left the server.')
+                        events.append({'time': now, 'name': name, 'event': 'left'})
+                    _save_events(events)
+                webhook = cfg.get('discord_webhook_url')
+                for name in joined:
+                    notify.send_discord(webhook, f'\N{LARGE GREEN CIRCLE} **{name}** joined the server.')
+                for name in left:
+                    notify.send_discord(webhook, f'\N{LARGE RED CIRCLE} **{name}** left the server.')
             known = current
-            first_poll = False
-        except Exception:
-            pass
+        except Exception as e:
+            print(f'player poller: {type(e).__name__}: {e}', file=sys.stderr)
         time.sleep(60)
 
 
@@ -155,7 +179,7 @@ def parse_players(raw):
         return []
     players = []
     for line in lines[1:]:
-        parts = line.split(',')
+        parts = line.rsplit(',', 2)  # the name itself may contain commas
         if len(parts) >= 3:
             players.append({'name': parts[0], 'playeruid': parts[1], 'steamid': parts[2]})
     return players
@@ -166,28 +190,43 @@ threading.Thread(target=_poll_players_forever, daemon=True).start()
 
 # --- public landing page ---
 
+PUBLIC_CACHE_SECONDS = 15
+_public_cache = {'expires': 0.0, 'data': None}
+_public_cache_lock = threading.Lock()
+
+
+def _public_snapshot():
+    # The public page auto-refreshes every 30s for every visitor; without this
+    # each one would open a fresh RCON connection against the game server.
+    now = time.time()
+    with _public_cache_lock:
+        if _public_cache['data'] is not None and now < _public_cache['expires']:
+            return _public_cache['data']
+        pairs = ini_settings.parse(server_control.INI_PATH.read_text())
+        try:
+            players = parse_players(rcon('ShowPlayers'))
+            online = True
+        except rcon_client.RconError:
+            players = []
+            online = False
+        data = {
+            'server_name': ini_settings.unquote(pairs.get('ServerName', '""')),
+            'description': ini_settings.unquote(pairs.get('ServerDescription', '""')),
+            'max_players': pairs.get('ServerPlayerMaxNum', '32'),
+            'players': players,
+            'online': online,
+        }
+        _public_cache['data'] = data
+        _public_cache['expires'] = now + PUBLIC_CACHE_SECONDS
+        return data
+
+
 @app.route('/')
 def public_landing():
     cfg = load_config()
-    pairs = ini_settings.parse(server_control.INI_PATH.read_text())
-    server_name = pairs.get('ServerName', '""').strip('"')
-    description = pairs.get('ServerDescription', '""').strip('"')
-    max_players = pairs.get('ServerPlayerMaxNum', '32')
-
-    try:
-        players = parse_players(rcon('ShowPlayers'))
-        online = True
-    except rcon_client.RconError:
-        players = []
-        online = False
-
     return render_template(
         'public.html',
-        server_name=server_name,
-        description=description,
-        max_players=max_players,
-        players=players,
-        online=online,
+        **_public_snapshot(),
         discord_invite_url=cfg.get('discord_invite_url', ''),
         connect_host='play.bachelorpals.com',
         connect_port=8211,
@@ -201,7 +240,7 @@ def login():
     if session.get('authenticated'):
         return redirect(url_for('dashboard'))
 
-    ip = request.remote_addr
+    ip = client_ip()
     count, locked_until = FAILED_LOGINS.get(ip, (0, 0))
 
     if request.method == 'POST':
@@ -217,7 +256,9 @@ def login():
             session.clear()
             session.permanent = True
             session['authenticated'] = True
-            next_url = request.args.get('next') or url_for('dashboard')
+            next_url = request.args.get('next', '')
+            if not next_url.startswith('/') or next_url.startswith('//'):
+                next_url = url_for('dashboard')
             return redirect(next_url)
         else:
             count += 1
@@ -357,6 +398,7 @@ def action_shutdown():
     message = request.form.get('message', 'Server restarting').strip().replace(' ', '_')
     try:
         result = rcon(f'Shutdown {seconds} {message}')
+        server_control.mark_intentional_restart()
         flash(f'Shutdown scheduled: {result}', 'result')
     except rcon_client.RconError as e:
         flash(str(e), 'error')
@@ -447,6 +489,8 @@ def backups_create():
         pass
     try:
         name = server_control.create_backup()
+        keep = load_config().get('scheduled_backup', {}).get('keep', 30)
+        server_control.prune_backups(keep)
         flash(f'Created {name}', 'result')
     except Exception as e:
         flash(str(e), 'error')
@@ -474,17 +518,18 @@ def backups_schedule():
     if not check_csrf():
         flash('Session expired, please retry.', 'error')
         return redirect(url_for('backups'))
-    cfg = load_config()
     enabled = request.form.get('enabled') == 'on'
-    interval_hours = int(request.form.get('interval_hours', 6))
-    keep = int(request.form.get('keep', 30))
-    cfg['scheduled_backup'] = {'enabled': enabled, 'interval_hours': interval_hours, 'keep': keep}
-    save_config(cfg)
+    interval_hours = _form_int('interval_hours', 6, 1)
+    keep = _form_int('keep', 30, 1)
     try:
         server_control.write_backup_timer(enabled, interval_hours)
-        flash('Backup schedule updated.', 'result')
     except Exception as e:
         flash(str(e), 'error')
+        return redirect(url_for('backups'))
+    cfg = load_config()
+    cfg['scheduled_backup'] = {'enabled': enabled, 'interval_hours': interval_hours, 'keep': keep}
+    save_config(cfg)
+    flash('Backup schedule updated.', 'result')
     return redirect(url_for('backups'))
 
 
@@ -538,11 +583,12 @@ def server_stop():
     try:
         rcon('Save')
         rcon('Shutdown 5 Server_stopping')
+        server_control.mark_intentional_restart()
     except rcon_client.RconError:
         pass
     time.sleep(6)
     server_control.stop_server()
-    flash('Server stopped.', 'result')
+    flash('Stop requested.', 'result')
     return redirect(url_for('monitor'))
 
 
@@ -555,6 +601,7 @@ def server_restart():
     message = request.form.get('message', 'Restarting').strip().replace(' ', '_')
     try:
         rcon(f'Shutdown {seconds} {message}')
+        server_control.mark_intentional_restart()
         flash(f'Restart scheduled in {seconds}s; it will come back up automatically.', 'result')
     except rcon_client.RconError as e:
         flash(str(e), 'error')
@@ -566,21 +613,22 @@ def server_restart():
 def scheduled_restart():
     if not check_csrf():
         return redirect(url_for('monitor'))
-    cfg = load_config()
     enabled = request.form.get('enabled') == 'on'
-    time_str = request.form.get('time', '04:00')
-    seconds_warning = int(request.form.get('seconds_warning', 60))
-    message = request.form.get('message', 'Scheduled restart')
+    time_str = request.form.get('time', '').strip() or '04:00'
+    seconds_warning = _form_int('seconds_warning', 60, 0)
+    message = request.form.get('message', '').strip() or 'Scheduled restart'
+    try:
+        server_control.write_restart_timer(enabled, time_str)
+    except Exception as e:
+        flash(str(e), 'error')
+        return redirect(url_for('monitor'))
+    cfg = load_config()
     cfg['scheduled_restart'] = {
         'enabled': enabled, 'time': time_str,
         'seconds_warning': seconds_warning, 'message': message,
     }
     save_config(cfg)
-    try:
-        server_control.write_restart_timer(enabled, time_str)
-        flash('Restart schedule updated.', 'result')
-    except Exception as e:
-        flash(str(e), 'error')
+    flash('Restart schedule updated.', 'result')
     return redirect(url_for('monitor'))
 
 
