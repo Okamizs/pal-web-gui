@@ -33,4 +33,26 @@ PAL_RCON_PASSWORD='<AdminPassword from PalWorldSettings.ini>' .venv/bin/python s
 
 Then install the units from `systemd/` into `~/.config/systemd/user/`, `systemctl --user daemon-reload`, and enable `pal-web-gui.service` and `watchdog.service`.
 
+## Server-side mods (UE4SS, native Linux)
+
+The game server stays the stock native Linux binary; mods load through
+[UE4SS](https://github.com/BlackBookOfficial/ue4ss-linux-palworld) via a single
+`Environment=LD_PRELOAD=…/libUE4SS.so` line in `systemd/palserver.service`.
+Delete that line and restart to run unmodded.
+
+- `install_ue4ss_linux.sh` installs UE4SS next to `PalServer.sh` with the
+  cheat/console mods disabled and the headless-server settings fix applied
+  (the tagged release's shipped settings crash a server with no display).
+- The tagged release cannot enumerate existing game objects on this binary
+  (upstream issues #4/#10, fixed on the `linux-native` branch but never
+  released), so the `.so` is built locally from that branch and installed with
+  `UE4SS_SO=<path> ./install_ue4ss_linux.sh`.
+- Mods live in `ue4ss-mods/` here and are copied to `PalServer/Mods/<Name>/`;
+  enable them in `Mods/mods.txt`. `BiggerBaseArea` enlarges every base's build
+  radius by 1.25x — server-side only, so console players get it too (the
+  client still draws the boundary circle at the vanilla radius).
+- After a Palworld update, check `PalServer/UE4SS.log`: address resolution
+  lines, a `506/506` vtable sweep and the mods' own output mean it's fine; a
+  `Signal=6` in the journal means disable the line and rebuild.
+
 Reachability in this deployment is via a Cloudflare Tunnel (`systemd/cloudflared.service`), not a router port-forward — no inbound port needs to be opened.

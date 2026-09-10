@@ -9,10 +9,12 @@ WorkingDirectory=%h/.local/share/Steam/steamapps/common/PalServer
 # edits made via the web GUI. Restore the staged copy (written by the GUI) first.
 # Leading '-' = don't fail the start if no staged file exists yet.
 ExecStartPre=-/usr/bin/cp -f %h/pal-web-gui/PalWorldSettings.desired.ini %h/.local/share/Steam/steamapps/common/PalServer/Pal/Saved/Config/LinuxServer/PalWorldSettings.ini
-# UE4SS (native-Linux port v1.0.2) was tried here on 2026-09-09 and crashed the
-# server with SIGABRT ~30s into boot on game build 25080279 — see CLAUDE.md.
-# Re-enable only after verifying against a matching UE4SS build:
-# Environment=LD_PRELOAD=%h/.local/share/Steam/steamapps/common/PalServer/libUE4SS.so
+# Native-Linux UE4SS for server-side Lua mods (Mods/mods.txt). Locally built from
+# the linux-native branch — the tagged release crashes headless servers (its
+# settings parser aborts on empty version fields; see install_ue4ss_linux.sh).
+# To disable all mods: delete this one line and restart. The game binary
+# itself is never modified.
+Environment=LD_PRELOAD=%h/.local/share/Steam/steamapps/common/PalServer/libUE4SS.so
 ExecStart=%h/.local/share/Steam/steamapps/common/PalServer/PalServer.sh -publiclobby -EpicApp=PalServer -port=8211 -queryport=27016 -players=21
 Restart=always
 RestartSec=15
