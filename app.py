@@ -1,10 +1,12 @@
 import json
+import os
 import secrets
 import sys
 import threading
 import time
 from functools import wraps
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from flask import Flask, redirect, render_template, request, session, url_for, flash
 from werkzeug.security import check_password_hash
@@ -132,14 +134,25 @@ def _load_events():
 
 
 def _save_events(events):
-    PLAYER_EVENTS_PATH.write_text(json.dumps(events[-500:], indent=2))
+    # Atomic replace: a crash mid-write must not leave a truncated file, since
+    # the poller seeds its state from this on startup.
+    tmp = PLAYER_EVENTS_PATH.with_suffix('.json.tmp')
+    tmp.write_text(json.dumps(events[-500:], indent=2))
+    os.replace(tmp, PLAYER_EVENTS_PATH)
 
 
 def _initial_known():
     # Seed "who is online" from the event log so a web-GUI restart doesn't
-    # reset the baseline and silently swallow the next real join/leave.
+    # reset the baseline and silently swallow the next real join/leave. The
+    # trade-off: a player who left while the GUI was down is reported as
+    # leaving on the first poll after it comes back (late, but not lost).
+    try:
+        events = _load_events()
+    except (OSError, ValueError) as e:
+        print(f'player poller: could not read event log, starting empty: {type(e).__name__}: {e}', file=sys.stderr)
+        return set()
     last = {}
-    for e in _load_events():
+    for e in events:
         last[e['name']] = e['event']
     return {name for name, event in last.items() if event == 'joined'}
 
@@ -257,7 +270,10 @@ def login():
             session.permanent = True
             session['authenticated'] = True
             next_url = request.args.get('next', '')
-            if not next_url.startswith('/') or next_url.startswith('//'):
+            # Only same-site paths. Browsers turn '\' into '/', so '/\evil.tld'
+            # would become protocol-relative; parse it instead of prefix-checking.
+            parts = urlsplit(next_url)
+            if parts.scheme or parts.netloc or '\\' in next_url or not next_url.startswith('/'):
                 next_url = url_for('dashboard')
             return redirect(next_url)
         else:
@@ -418,8 +434,10 @@ def settings():
         if not check_csrf():
             flash('Session expired, please retry.', 'error')
             return redirect(url_for('settings'))
-        ini_settings.apply_updates(pairs, request.form)
+        rejected = ini_settings.apply_updates(pairs, request.form)
         server_control.write_ini(ini_settings.render(pairs))
+        if rejected:
+            flash('Not a valid number, left unchanged: ' + ', '.join(rejected), 'error')
         flash('Settings saved. Restart the server (Monitor page) for changes to take effect.', 'result')
         return redirect(url_for('settings'))
 
@@ -603,15 +621,15 @@ def server_start():
 def server_stop():
     if not check_csrf():
         return redirect(url_for('monitor'))
+    # Save, then a plain systemctl stop. Not RCON Shutdown: that exits the
+    # process and Restart=always relaunches it before the stop lands, which
+    # also left an intentional-restart marker with nothing to consume it.
     try:
         rcon('Save')
-        rcon('Shutdown 5 Server_stopping')
-        server_control.mark_intentional_restart()
     except rcon_client.RconError:
         pass
-    time.sleep(6)
     server_control.stop_server()
-    flash('Stop requested.', 'result')
+    flash('Stop requested (world saved first).', 'result')
     return redirect(url_for('monitor'))
 
 

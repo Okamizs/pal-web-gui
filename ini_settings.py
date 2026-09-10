@@ -14,7 +14,9 @@ EDITABLE_FIELDS = OrderedDict([
     ('ServerName', ('string', 'Server name')),
     ('ServerDescription', ('string', 'Server description')),
     ('ServerPassword', ('string', 'Server password (blank = open)')),
-    ('AdminPassword', ('string', 'Admin password (in-game /AdminPassword)')),
+    # AdminPassword is deliberately NOT editable here: it is also the RCON
+    # password in config.json, and the two must change together with a server
+    # restart in between. Use rotate_admin_password.py.
     ('Difficulty', ('rawtext', 'Difficulty (advanced, see Palworld wiki for valid values)')),
     ('DeathPenalty', ('rawtext', 'Death penalty (None / Item / ItemAndEquipment / All)')),
     ('DayTimeSpeedRate', ('float', 'Day speed rate')),
@@ -126,8 +128,10 @@ def to_display(pairs):
 
 
 def apply_updates(pairs, form):
-    """Mutates pairs in place from submitted form data (checkboxes absent = False)."""
-    for key, (kind, _label) in EDITABLE_FIELDS.items():
+    """Mutates pairs in place from submitted form data (checkboxes absent = False).
+    Returns the labels of numeric fields whose value was rejected and left unchanged."""
+    rejected = []
+    for key, (kind, label) in EDITABLE_FIELDS.items():
         if key not in pairs:
             continue
         if kind == 'bool':
@@ -140,16 +144,16 @@ def apply_updates(pairs, form):
                 try:
                     pairs[key] = str(int(raw))
                 except ValueError:
-                    pass
+                    rejected.append(label)
         elif kind == 'float':
             raw = form.get(key, '').strip()
             if raw:
                 try:
                     pairs[key] = f'{float(raw):.6f}'
                 except ValueError:
-                    pass
+                    rejected.append(label)
         elif kind == 'rawtext':
             raw = form.get(key, '').strip()
             if raw:
                 pairs[key] = raw
-    return pairs
+    return rejected

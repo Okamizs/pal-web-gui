@@ -27,7 +27,11 @@ tar -xzf "$STAGE/ue4ss.tar.gz" -C "$STAGE"
 
 echo "==> installing next to PalServer.sh"
 cp "$STAGE/libUE4SS.so" "$STAGE/UE4SS-settings.ini" "$STAGE/MemberVariableLayout.ini" "$STAGE/BUILD_INFO.txt" "$ROOT/"
+# Refresh the bundled mods but keep the operator's mods.txt (which mods are on)
+# across re-runs; the toggles below only touch this script's own entries.
+[ -f "$ROOT/Mods/mods.txt" ] && cp "$ROOT/Mods/mods.txt" "$STAGE/mods.txt.keep"
 cp -r "$STAGE/Mods" "$ROOT/"
+[ -f "$STAGE/mods.txt.keep" ] && cp "$STAGE/mods.txt.keep" "$ROOT/Mods/mods.txt"
 
 # The tagged release binary is known-broken (repo issues #1/#11); the fixes
 # live on the linux-native branch and must be built locally. Point at that

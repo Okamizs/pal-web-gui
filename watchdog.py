@@ -60,17 +60,21 @@ def main():
 
         try:
             current_restart_count = server_control.restart_count()
-            if current_restart_count > last_restart_count:
+            bumps = current_restart_count - last_restart_count
+            if bumps > 0:
                 # Restart=always also relaunches after an RCON `Shutdown`, so an
                 # admin- or timer-triggered restart bumps NRestarts exactly like
-                # a crash does. The marker file tells the two apart.
+                # a crash does. The marker file accounts for exactly one bump;
+                # any further bumps in the same 60s window are real crashes.
                 if server_control.consume_intentional_restart():
                     log(f'server relaunched after an intentional shutdown (restart #{current_restart_count}), not alerting')
-                else:
+                    bumps -= 1
+                if bumps > 0:
+                    extra = f', {bumps} relaunches since the last check' if bumps > 1 else ''
                     notify.send_discord(
                         webhook,
                         f':warning: Palworld server crashed and was automatically restarted by systemd '
-                        f'(restart #{current_restart_count}).',
+                        f'(restart #{current_restart_count}{extra}).',
                     )
             last_restart_count = current_restart_count
         except Exception as e:
