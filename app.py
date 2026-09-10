@@ -419,7 +419,7 @@ def settings():
             flash('Session expired, please retry.', 'error')
             return redirect(url_for('settings'))
         ini_settings.apply_updates(pairs, request.form)
-        ini_path.write_text(ini_settings.render(pairs))
+        server_control.write_ini(ini_settings.render(pairs))
         flash('Settings saved. Restart the server (Monitor page) for changes to take effect.', 'result')
         return redirect(url_for('settings'))
 

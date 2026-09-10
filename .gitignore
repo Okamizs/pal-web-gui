@@ -8,5 +8,6 @@ backups/
 player_events.json
 failed_logins.json
 .intentional_restart
+PalWorldSettings.desired.ini
 cloudflare_ddns.log
 CLAUDE.md

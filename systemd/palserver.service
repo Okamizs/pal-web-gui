@@ -5,6 +5,10 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=%h/.local/share/Steam/steamapps/common/PalServer
+# The game rewrites PalWorldSettings.ini from memory on a graceful exit, undoing
+# edits made via the web GUI. Restore the staged copy (written by the GUI) first.
+# Leading '-' = don't fail the start if no staged file exists yet.
+ExecStartPre=-/usr/bin/cp -f %h/pal-web-gui/PalWorldSettings.desired.ini %h/.local/share/Steam/steamapps/common/PalServer/Pal/Saved/Config/LinuxServer/PalWorldSettings.ini
 ExecStart=%h/.local/share/Steam/steamapps/common/PalServer/PalServer.sh -publiclobby -EpicApp=PalServer -port=8211 -queryport=27016 -players=21
 Restart=always
 RestartSec=15

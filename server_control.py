@@ -17,6 +17,16 @@ BACKUP_TIMER_NAME = 'palserver-backup.timer'
 WORKER_BINARY_MATCH = 'Pal/Binaries/Linux/PalServer-Linux-Shipping'
 INTENTIONAL_RESTART_MARKER = Path.home() / 'pal-web-gui/.intentional_restart'
 INTENTIONAL_RESTART_MAX_AGE_SECONDS = 600
+# The game rewrites the live ini from memory on a graceful exit (RCON Shutdown),
+# undoing any edit made while it was running. palserver.service's ExecStartPre
+# copies this staged file back over the live one right before each boot.
+STAGED_INI = Path.home() / 'pal-web-gui/PalWorldSettings.desired.ini'
+
+
+def write_ini(text):
+    INI_PATH.write_text(text)
+    STAGED_INI.write_text(text)
+    STAGED_INI.chmod(0o600)
 
 
 def _show_properties(unit, *props):
@@ -64,6 +74,11 @@ def restart_count():
     """How many times systemd has auto-restarted the game server (crash detection)."""
     props = _show_properties(UNIT_NAME, 'NRestarts')
     return int(props.get('NRestarts', 0))
+
+
+def main_start_timestamp():
+    """Changes whenever the game process is (re)launched."""
+    return _show_properties(UNIT_NAME, 'ExecMainStartTimestamp').get('ExecMainStartTimestamp', '')
 
 
 def worker_pid():
