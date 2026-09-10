@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import tarfile
+import threading
 import time
 from pathlib import Path
 
@@ -81,13 +82,28 @@ def main_start_timestamp():
     return _show_properties(UNIT_NAME, 'ExecMainStartTimestamp').get('ExecMainStartTimestamp', '')
 
 
+_worker_pid_cache = None
+
+
 def worker_pid():
     """PID of the actual game binary, not the launcher shell script systemd tracks as
-    MainPID (PalServer.sh runs it as a child instead of exec'ing into it)."""
+    MainPID (PalServer.sh runs it as a child instead of exec'ing into it).
+    Cached and re-validated against /proc so per-second polling doesn't fork pgrep."""
+    global _worker_pid_cache
+    pid = _worker_pid_cache
+    if pid:
+        try:
+            with open(f'/proc/{pid}/cmdline', 'rb') as f:
+                if WORKER_BINARY_MATCH.encode() in f.read():
+                    return pid
+        except OSError:
+            pass
     result = _run(['pgrep', '-f', WORKER_BINARY_MATCH])
     if result.returncode == 0 and result.stdout.strip():
-        return int(result.stdout.strip().splitlines()[0])
-    return None
+        _worker_pid_cache = int(result.stdout.strip().splitlines()[0])
+    else:
+        _worker_pid_cache = None
+    return _worker_pid_cache
 
 
 def start_server():
@@ -127,16 +143,72 @@ def recent_log(lines=100):
 
 # --- resource monitoring ---
 
+_CLK_TCK = os.sysconf('SC_CLK_TCK')
+_cpu_sample_lock = threading.Lock()
+_cpu_sample = None  # (pid, monotonic time, cpu ticks) from the previous call
+
+
+def _mem_total_kb():
+    with open('/proc/meminfo') as f:
+        for line in f:
+            if line.startswith('MemTotal:'):
+                return int(line.split()[1])
+    return None
+
+
+def _format_elapsed(seconds):
+    days, rem = divmod(int(seconds), 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, secs = divmod(rem, 60)
+    clock = f'{hours:02}:{minutes:02}:{secs:02}'
+    return f'{days}d {clock}' if days else clock
+
+
 def process_stats(pid):
+    """Read straight from /proc (no subprocess) so this is cheap to poll every
+    second. CPU% is the delta since the previous call — an instantaneous figure
+    like top's — falling back to the lifetime average on the first call."""
+    global _cpu_sample
     if not pid:
         return None
-    result = _run(['ps', '-p', str(pid), '-o', '%cpu,%mem,etime', '--no-headers'])
-    if result.returncode != 0 or not result.stdout.strip():
+    try:
+        with open(f'/proc/{pid}/stat') as f:
+            stat = f.read()
+        with open(f'/proc/{pid}/status') as f:
+            status = f.read()
+        with open('/proc/uptime') as f:
+            uptime = float(f.read().split()[0])
+    except OSError:
         return None
-    parts = result.stdout.split()
-    if len(parts) < 3:
-        return None
-    return {'cpu_pct': parts[0], 'mem_pct': parts[1], 'elapsed': parts[2]}
+
+    fields = stat[stat.rindex(')') + 2:].split()  # everything after "pid (comm) "
+    cpu_ticks = int(fields[11]) + int(fields[12])  # utime + stime
+    started = int(fields[19]) / _CLK_TCK          # starttime, seconds since boot
+    elapsed = max(uptime - started, 0.0)
+    now = time.monotonic()
+
+    with _cpu_sample_lock:
+        previous = _cpu_sample
+        _cpu_sample = (pid, now, cpu_ticks)
+    if previous and previous[0] == pid and now - previous[1] > 0.2:
+        cpu_pct = (cpu_ticks - previous[2]) / _CLK_TCK / (now - previous[1]) * 100
+    else:
+        cpu_pct = (cpu_ticks / _CLK_TCK) / elapsed * 100 if elapsed > 0 else 0.0
+
+    rss_kb = 0
+    for line in status.splitlines():
+        if line.startswith('VmRSS:'):
+            rss_kb = int(line.split()[1])
+            break
+    total_kb = _mem_total_kb()
+    mem_pct = rss_kb / total_kb * 100 if total_kb else 0.0
+
+    return {
+        'cpu_pct': f'{cpu_pct:.1f}',
+        'mem_pct': f'{mem_pct:.1f}',
+        'mem_mb': round(rss_kb / 1024),
+        'elapsed': _format_elapsed(elapsed),
+    }
 
 
 def disk_free_gb():

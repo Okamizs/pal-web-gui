@@ -62,5 +62,5 @@ pre.log {
   background: #0e1015; border-radius: 8px; padding: 12px; font-size: 12px; line-height: 1.5;
   overflow-x: auto; max-height: 360px; overflow-y: auto; color: #b7bfcc; white-space: pre-wrap; word-break: break-word;
 }
-.event-join { color: #8adf9c; }
-.event-leave { color: #ff8a8a; }
+.event-joined { color: #8adf9c; }
+.event-left { color: #ff8a8a; }

@@ -535,6 +535,33 @@ def backups_schedule():
 
 # --- monitor ---
 
+def _active_lockouts():
+    return [
+        {'ip': ip, 'until': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(locked_until))}
+        for ip, (count, locked_until) in FAILED_LOGINS.items()
+        if locked_until > time.time()
+    ]
+
+
+@app.route('/admin/monitor/data')
+@login_required
+def monitor_data():
+    # Polled every second by the Monitor page; ?full=1 (every 10th poll) also
+    # refreshes the heavier sections so the page never needs a full reload.
+    status = server_control.service_status()
+    data = {
+        'status': status,
+        'stats': server_control.process_stats(server_control.worker_pid()) if status['active'] == 'active' else None,
+        'disk_free_gb': server_control.disk_free_gb(),
+    }
+    if request.args.get('full'):
+        data['log_text'] = server_control.recent_log(150)
+        data['events'] = list(reversed(_load_events()))[:40]
+        data['failed_logins'] = list(reversed(_load_failed_logins()))[:20]
+        data['active_lockouts'] = _active_lockouts()
+    return data
+
+
 @app.route('/admin/monitor')
 @login_required
 def monitor():
@@ -544,11 +571,7 @@ def monitor():
     log_text = server_control.recent_log(150)
     events = list(reversed(_load_events()))[:40]
     failed_logins = list(reversed(_load_failed_logins()))[:20]
-    active_lockouts = [
-        {'ip': ip, 'until': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(locked_until))}
-        for ip, (count, locked_until) in FAILED_LOGINS.items()
-        if locked_until > time.time()
-    ]
+    active_lockouts = _active_lockouts()
     return render_template(
         'monitor.html',
         status=status,

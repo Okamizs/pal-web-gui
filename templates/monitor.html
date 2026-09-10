@@ -3,7 +3,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="15">
 <title>Pal Server Admin — Monitor</title>
 <link rel="icon" href="{{ static_url('favicon.png') }}">
 <link rel="stylesheet" href="{{ static_url('style.css') }}">
@@ -23,23 +22,23 @@
   {% endwith %}
 
   <div class="card">
-    <h2>Status</h2>
-    <span class="pill {{ 'active' if status.active == 'active' else 'inactive' }}">{{ status.active }}</span>
+    <h2>Status <span class="small" style="text-transform:none;letter-spacing:0;">— live</span></h2>
+    <span class="pill {{ 'active' if status.active == 'active' else 'inactive' }}" id="status-pill">{{ status.active }}</span>
     <div class="stat-grid" style="margin-top:14px;">
-      <div class="stat"><div class="label">CPU</div><div class="value">{{ stats.cpu_pct if stats else '—' }}%</div></div>
-      <div class="stat"><div class="label">Memory</div><div class="value">{{ stats.mem_pct if stats else '—' }}%</div></div>
-      <div class="stat"><div class="label">Uptime</div><div class="value">{{ stats.elapsed if stats else '—' }}</div></div>
-      <div class="stat"><div class="label">Disk free</div><div class="value">{{ disk_free_gb }} GB</div></div>
+      <div class="stat"><div class="label">CPU</div><div class="value" id="stat-cpu">{{ stats.cpu_pct ~ '%' if stats else '—' }}</div></div>
+      <div class="stat"><div class="label">Memory</div><div class="value" id="stat-mem">{{ stats.mem_pct ~ '% (' ~ stats.mem_mb ~ ' MB)' if stats else '—' }}</div></div>
+      <div class="stat"><div class="label">Uptime</div><div class="value" id="stat-uptime">{{ stats.elapsed if stats else '—' }}</div></div>
+      <div class="stat"><div class="label">Disk free</div><div class="value" id="stat-disk">{{ disk_free_gb }} GB</div></div>
     </div>
 
     <div class="row" style="margin-top:16px;">
       <form method="post" action="{{ url_for('server_start') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit" {% if status.active == 'active' %}disabled{% endif %}>Start</button>
+        <button type="submit" id="btn-start" {% if status.active == 'active' %}disabled{% endif %}>Start</button>
       </form>
       <form method="post" action="{{ url_for('server_stop') }}" onsubmit="return confirm('Stop the server? Players online will be kicked.');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit" class="danger" {% if status.active != 'active' %}disabled{% endif %}>Stop</button>
+        <button type="submit" class="danger" id="btn-stop" {% if status.active != 'active' %}disabled{% endif %}>Stop</button>
       </form>
     </div>
 
@@ -49,7 +48,7 @@
         <input type="number" name="seconds" value="30" min="0" title="Warning seconds before restart">
         <input type="text" name="message" placeholder="Restart message" value="Restarting">
       </div>
-      <button type="submit" class="primary" {% if status.active != 'active' %}disabled{% endif %}>Restart now</button>
+      <button type="submit" class="primary" id="btn-restart" {% if status.active != 'active' %}disabled{% endif %}>Restart now</button>
     </form>
   </div>
 
@@ -79,9 +78,9 @@
 
   <div class="card">
     <h2>Recent player activity</h2>
-    {% if events %}
-    <table>
-      <tr><th>Time</th><th>Player</th><th>Event</th></tr>
+    <table id="events-table" {% if not events %}hidden{% endif %}>
+      <thead><tr><th>Time</th><th>Player</th><th>Event</th></tr></thead>
+      <tbody id="events-body">
       {% for e in events %}
       <tr>
         <td class="small">{{ e.time }}</td>
@@ -89,39 +88,114 @@
         <td class="event-{{ e.event }}">{{ e.event }}</td>
       </tr>
       {% endfor %}
+      </tbody>
     </table>
-    {% else %}
-    <div class="empty">No activity recorded yet (tracking started when the web GUI last restarted).</div>
-    {% endif %}
+    <div class="empty" id="events-empty" {% if events %}hidden{% endif %}>No activity recorded yet.</div>
   </div>
 
   <div class="card">
     <h2>Security</h2>
-    {% if active_lockouts %}
-    <div class="flash error" style="margin-bottom:14px;">
+    <div class="flash error" id="lockouts" style="margin-bottom:14px;" {% if not active_lockouts %}hidden{% endif %}>
       {% for l in active_lockouts %}Locked out: <code>{{ l.ip }}</code> until {{ l.until }}<br>{% endfor %}
     </div>
-    {% endif %}
     <div class="small" style="margin-bottom:8px;">Recent failed login attempts</div>
-    {% if failed_logins %}
-    <table>
-      <tr><th>Time</th><th>IP</th></tr>
+    <table id="failed-table" {% if not failed_logins %}hidden{% endif %}>
+      <thead><tr><th>Time</th><th>IP</th></tr></thead>
+      <tbody id="failed-body">
       {% for f in failed_logins %}
       <tr>
         <td class="small">{{ f.time }}</td>
         <td>{{ f.ip }}</td>
       </tr>
       {% endfor %}
+      </tbody>
     </table>
-    {% else %}
-    <div class="empty">No failed login attempts recorded.</div>
-    {% endif %}
+    <div class="empty" id="failed-empty" {% if failed_logins %}hidden{% endif %}>No failed login attempts recorded.</div>
   </div>
 
   <div class="card">
     <h2>Server log (last 150 lines)</h2>
-    <pre class="log">{{ log_text }}</pre>
+    <pre class="log" id="log">{{ log_text }}</pre>
   </div>
 </div>
+
+<script>
+(function () {
+  // Stats every second, the heavier sections (log, activity, security) every
+  // 10th poll. Everything is patched into the DOM with textContent — player
+  // names and log lines are untrusted — so the page never fully reloads.
+  var byId = function (id) { return document.getElementById(id); };
+  var tick = 0;
+
+  function cell(text, cls) {
+    var td = document.createElement('td');
+    td.textContent = text;
+    if (cls) td.className = cls;
+    return td;
+  }
+  function fill(tbody, rows) {
+    tbody.replaceChildren();
+    rows.forEach(function (cells) {
+      var tr = document.createElement('tr');
+      cells.forEach(function (c) { tr.appendChild(c); });
+      tbody.appendChild(tr);
+    });
+  }
+  function toggle(table, empty, hasRows) {
+    table.hidden = !hasRows;
+    empty.hidden = hasRows;
+  }
+
+  function render(d) {
+    var active = d.status.active === 'active';
+    var pill = byId('status-pill');
+    pill.textContent = d.status.active;
+    pill.className = 'pill ' + (active ? 'active' : 'inactive');
+    byId('stat-cpu').textContent = d.stats ? d.stats.cpu_pct + '%' : '—';
+    byId('stat-mem').textContent = d.stats ? d.stats.mem_pct + '% (' + d.stats.mem_mb + ' MB)' : '—';
+    byId('stat-uptime').textContent = d.stats ? d.stats.elapsed : '—';
+    byId('stat-disk').textContent = d.disk_free_gb + ' GB';
+    byId('btn-start').disabled = active;
+    byId('btn-stop').disabled = !active;
+    byId('btn-restart').disabled = !active;
+
+    if (d.log_text === undefined) return;
+    byId('log').textContent = d.log_text;
+    fill(byId('events-body'), d.events.map(function (e) {
+      return [cell(e.time, 'small'), cell(e.name), cell(e.event, 'event-' + e.event)];
+    }));
+    toggle(byId('events-table'), byId('events-empty'), d.events.length > 0);
+    fill(byId('failed-body'), d.failed_logins.map(function (f) {
+      return [cell(f.time, 'small'), cell(f.ip)];
+    }));
+    toggle(byId('failed-table'), byId('failed-empty'), d.failed_logins.length > 0);
+    var lock = byId('lockouts');
+    lock.replaceChildren();
+    d.active_lockouts.forEach(function (l) {
+      lock.appendChild(document.createTextNode('Locked out: '));
+      var code = document.createElement('code');
+      code.textContent = l.ip;
+      lock.appendChild(code);
+      lock.appendChild(document.createTextNode(' until ' + l.until));
+      lock.appendChild(document.createElement('br'));
+    });
+    lock.hidden = d.active_lockouts.length === 0;
+  }
+
+  function poll() {
+    if (document.hidden) { setTimeout(poll, 1000); return; }
+    var full = tick++ % 10 === 0;
+    fetch('{{ url_for('monitor_data') }}' + (full ? '?full=1' : ''), { cache: 'no-store' })
+      .then(function (r) {
+        if (r.redirected) { location.reload(); return null; }  // session expired -> login
+        return r.ok ? r.json() : null;
+      })
+      .then(function (d) { if (d) render(d); })
+      .catch(function () {})
+      .then(function () { setTimeout(poll, 1000); });
+  }
+  setTimeout(poll, 1000);
+})();
+</script>
 </body>
 </html>
