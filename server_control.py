@@ -10,12 +10,12 @@ from pathlib import Path
 
 PALSERVER_ROOT = Path.home() / '.local/share/Steam/steamapps/common/PalServer'
 INI_PATH = PALSERVER_ROOT / 'Pal/Saved/Config/LinuxServer/PalWorldSettings.ini'
+WORKER_BINARY_MATCH = 'Pal/Binaries/Linux/PalServer-Linux-Shipping'
 BACKUPS_DIR = Path.home() / 'pal-web-gui/backups'
 SYSTEMD_USER_DIR = Path.home() / '.config/systemd/user'
 UNIT_NAME = 'palserver.service'
 RESTART_TIMER_NAME = 'palserver-restart.timer'
 BACKUP_TIMER_NAME = 'palserver-backup.timer'
-WORKER_BINARY_MATCH = 'Pal/Binaries/Linux/PalServer-Linux-Shipping'
 INTENTIONAL_RESTART_MARKER = Path.home() / 'pal-web-gui/.intentional_restart'
 INTENTIONAL_RESTART_MAX_AGE_SECONDS = 600
 # The game rewrites the live ini from memory on a graceful exit (RCON Shutdown),
